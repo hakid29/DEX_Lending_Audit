@@ -1,4 +1,5 @@
 ## 1. jacqueline
+commit version : a5981c8
 
 https://github.com/je1att0/DEX_solidity/blob/main/src/DEX.sol
 <br></br>
@@ -64,6 +65,7 @@ Low
 
 <br></br>
 ## 2. damon
+commit version : 1671f2f
 
 https://github.com/gloomydumber/DEX_solidity/blob/master/src/Dex.sol
 <br></br>
@@ -110,6 +112,7 @@ Critical
 
 <br></br>
 ## 3. Muang
+commit version : d99cfb5
 
 https://github.com/GODMuang/DEX_solidity/blob/main/src/Dex.sol
 <br></br>
@@ -163,6 +166,7 @@ Critical
 
 <br></br>
 ## 4. Nullorm
+commit version : 14fadc4
 
 https://github.com/Null0RM/DEX_solidity/blob/main/src/Dex.sol
 <br></br>
@@ -191,4 +195,52 @@ Critical
 **해결방안**
 
 `transferFrom` 함수를 internal 또는 private으로 선언해야 한다.
+<br></br>
+## 5. Ella
+commit version : 1487df3
+
+https://github.com/skskgus/Dex_solidity/blob/main/src/Dex.sol
+<br></br>
+### 1. Re-entrancy attack
+
+**설명**
+
+Dex.sol/transferFrom:111-135
+```solidity
+function swap(uint256 amount0Out, uint256 amount1Out, uint256 minOutput) external returns (uint256 amountOut) {
+    require(amount0Out == 0 || amount1Out == 0, "Invalid input");
+
+    bool isToken0 = amount1Out == 0;
+    (IERC20 tokenIn, IERC20 tokenOut, uint256 reserveIn, uint256 reserveOut) = isToken0
+        ? (token0, token1, reserve0, reserve1)
+        : (token1, token0, reserve1, reserve0);
+
+    uint256 amountIn = isToken0 ? amount0Out : amount1Out;
+
+    uint256 balanceBefore = tokenIn.balanceOf(address(this));
+
+    tokenIn.transferFrom(msg.sender, address(this), amountIn);
+
+    uint256 actualAmountIn = tokenIn.balanceOf(address(this)) - balanceBefore;
+
+    uint256 amountInWithFee = (actualAmountIn * 999) / 1000;
+    amountOut = (reserveOut * amountInWithFee) / (reserveIn + amountInWithFee);
+
+    require(amountOut >= minOutput, "Insufficient output amount");
+
+    tokenOut.transfer(msg.sender, amountOut);
+
+    _update();
+}
+```
+
+다른 함수들과 달리 `swap` 함수는 맨 마지막에만 `_update` 함수를 호출한다. 여기서는 ERC20만을 사용하였지만 Cream finance와 같이 `transfer`함수를 통해 ERC777의 `tokenReceived` 함수와 같은 callback함수가 호출된다면 update되지 않은 reserve0, reserve1의 값으로 `swap` 함수를 다시 호출할 수 있다.
+<br></br>
+**파급력**
+
+Critical
+<br></br>
+**해결방안**
+
+당장의 취약점은 아니지만 나중에 문제가 될 수 있으므로 `_update` 함수를 `transfer` 함수를 호출하기 전에 호출하는 것을 추천한다.
 <br></br>
