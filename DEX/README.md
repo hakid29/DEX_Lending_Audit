@@ -238,7 +238,7 @@ function swap(uint256 amount0Out, uint256 amount1Out, uint256 minOutput) externa
 <br></br>
 **파급력**
 
-Critical
+Informational
 <br></br>
 **해결방안**
 
