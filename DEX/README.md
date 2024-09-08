@@ -244,3 +244,182 @@ Informational
 
 당장의 취약점은 아니지만 나중에 문제가 될 수 있으므로 `_update` 함수를 `transfer` 함수를 호출하기 전에 호출하는 것을 추천한다.
 <br></br>
+## 6. Mia
+commit version : 3dc4e18
+
+https://github.com/ooMia/Upside_DEX_solidity/blob/main/src/Dex.sol
+<br></br>
+### 1. 전역변수 update 미흡
+
+**설명**
+
+Dex.sol/swapX:120-127
+```solidity
+function swapX(uint256 amountIn) internal returns (uint256 amount) {
+    // in case of swap X -> Y
+    amount = balanceY - (balanceX * balanceY) / (balanceX + amountIn);
+    amount = (amount * 999) / 1000;
+
+    tokenX.transferFrom(msg.sender, address(this), amountIn);
+    tokenY.transfer(msg.sender, amount);
+}
+```
+
+swap을 한 뒤, 전역변수인 balanceX를 update하지 않는다. 따라서 swap을 여러 번 해도 같은 양의 토큰을 얻을 수 있으므로 일방적인 이득을 볼 수 있다.
+<br></br>
+**파급력**
+
+Critical
+<br></br>
+**해결방안**
+
+`swapX` 함수에서 balanceX를 swap한 양만큼 update해줘야 한다. 같은 맥락으로 `swapY` 함수에서 balanceY를 update해줘야 한다.
+
+<br></br>
+## 7. kaymin
+commit version : 1b37751
+
+https://github.com/kaymin128/Dex_solidity/blob/main/src/Dex.sol
+<br></br>
+### 1. 전역변수 update 미흡
+
+**설명**
+Dex.sol/addLiquidity:27
+```solidity
+function addLiquidity(uint amount_x, uint amount_y, uint min_liquidity) external returns (uint liquidity) {
+    require(amount_x > 0 && amount_y > 0, "Invalid input amounts");
+    require(token_x.allowance(msg.sender, address(this)) >= amount_x, "ERC20: insufficient allowance");
+    require(token_y.allowance(msg.sender, address(this)) >= amount_y, "ERC20: insufficient allowance");
+    require(token_x.balanceOf(msg.sender) >= amount_x, "ERC20: transfer amount exceeds balance");
+    require(token_y.balanceOf(msg.sender) >= amount_y, "ERC20: transfer amount exceeds balance");
+    
+    reserve_x = token_x.balanceOf(address(this));
+
+    if (total_supply == 0) {
+        liquidity = sqrt(amount_x * amount_y);
+    } else {
+        liquidity = min(amount_x * total_supply / reserve_x, amount_y * total_supply / reserve_y);
+    }
+
+    require(liquidity >= min_liquidity, "Dex: insufficient liquidity minted");
+
+    balanceOf[msg.sender] += liquidity; 
+    total_supply += liquidity; 
+    
+    reserve_x += amount_x; 
+    reserve_y += amount_y; 
+
+    require(token_x.transferFrom(msg.sender, address(this), amount_x), "Dex: transfer of token_x failed");
+    require(token_y.transferFrom(msg.sender, address(this), amount_y), "Dex: transfer of token_y failed");
+    return liquidity;
+}
+```
+
+`addLiquidity` 함수를 호출할 때, reserve_y를 가지고 오지 않는다. 하지만 reserve_y가 정상적으로 update가 되기 때문에 큰 문제가 되지 않는다.
+
+<br></br>
+**파급력**
+
+Informational
+<br></br>
+
+**해결방안**
+
+reserve_x를 가져오는 부분을 제거하거나 reserve_y를 가져오는 로직을 추가하는 것을 추천한다.
+
+<br></br>
+## 8. bob
+commit version : 973f72b
+
+https://github.com/choihs0457/DEX_solidity/blob/main/src/Dex.sol
+<br></br>
+### 1. 외부 transfer 고려
+
+**설명**
+Dex.sol/updateLiquidity:20-27
+```solidity
+modifier updateLiquidity() {
+    uint256 currentBalanceX = tokenX.balanceOf(address(this));
+    uint256 currentBalanceY = tokenY.balanceOf(address(this));
+    
+    liquidityX = currentBalanceX;
+    liquidityY = currentBalanceY;
+    _;
+}
+```
+
+`updateLiquidity` modifier에서 전역변수인 liquidityX, liquidityY를 update하는 과정에서 외부 transfer가 발생하면 기대했던 값과 다르게 update되어 두 토큰 간의 비율이 깨질 수 있다.
+
+<br></br>
+**파급력**
+
+Medium
+<br></br>
+
+**해결방안**
+
+외부 transfer을 검사하는 로직이 추가되어야 한다. (다른 함수로 인해 변화한 값을 저장하는 변수를 선언하여 currentBalanceX와 일치하는지 확인하는 등)
+
+<br></br>
+## 9. jeremy
+commit version : 3a5de86
+
+https://github.com/WOOSIK-jeremy/DEX_solidity/blob/main/src/Dex.sol
+<br></br>
+### 1. 조기 검사
+
+**설명**
+Dex.sol/swap:89
+```solidity
+require(currentX == 0 || currentY == 0);
+```
+
+만약 currentX, currentY가 모두 0이면 바로 revert를 시키지 않고 나머지 로직을 모두 수행한다.
+
+<br></br>
+**파급력**
+
+Informational
+<br></br>
+
+**해결방안**
+
+currentX, currentY가 모두 0이면 바로 revert시키는 로직을 추가하는 것을 추천한다.
+<br></br>
+### 2. 외부 transfer 고려
+
+**설명**
+
+`swap`, `addLiquidity`, `removeLiquidity` 함수를 호출할 때 두 토큰의 양을 balanceOf로 가져온다. 외부 transfer가 발생하면 기대했던 값과 다르게 가져와져서 두 토큰 간의 비율이 깨질 수 있다.
+
+<br></br>
+**파급력**
+
+Medium
+<br></br>
+
+**해결방안**
+
+외부 transfer을 검사하는 로직이 추가되어야 한다. (다른 함수로 인해 변화한 값을 저장하는 변수를 선언하는 등)
+
+<br></br>
+## 10. teddy
+commit version : 3488bc3
+
+https://github.com/gdh8230/DEX_solidity/blob/main/src/Dex.sol
+<br></br>
+### 1. 외부 transfer 고려
+
+**설명**
+
+두 토큰의 양은 balanceOf, LP token의 양은 `totalSupply` 함수를 호출하여 가져온다. 외부 transfer가 발생하면 기대했던 값과 다르게 가져와져서 두 토큰 간의 비율이 깨질 수 있다. 또한, 많은 양의 LP token을 누군가 transfer하면 다른 유저들이 `addLiquidity`, `removeLiquidity` 함수를 호출할 때 손해를 보게 된다.
+
+<br></br>
+**파급력**
+
+Medium
+<br></br>
+
+**해결방안**
+
+외부 transfer을 검사하는 로직이 추가되어야 한다. (다른 함수로 인해 변화한 값을 저장하는 변수를 선언하는 등)
